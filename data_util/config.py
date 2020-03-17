@@ -3,11 +3,14 @@ import os
 root_dir = os.path.expanduser("~")
 
 #train_data_path = os.path.join(root_dir, "ptr_nw/cnn-dailymail-master/finished_files/train.bin")
-train_data_path = os.path.join(root_dir, "ptr_nw/cnn-dailymail-master/finished_files/chunked/train_*")
-eval_data_path = os.path.join(root_dir, "ptr_nw/cnn-dailymail-master/finished_files/val.bin")
-decode_data_path = os.path.join(root_dir, "ptr_nw/cnn-dailymail-master/finished_files/test.bin")
-vocab_path = os.path.join(root_dir, "ptr_nw/cnn-dailymail-master/finished_files/vocab")
-log_root = os.path.join(root_dir, "ptr_nw/log")
+train_data_path = os.path.join(root_dir, "/home/alta/summary/pm574/data/cnn_dm/finished_files/chunked/train_*")
+eval_data_path = os.path.join(root_dir, "/home/alta/summary/pm574/data/cnn_dm/finished_files/val.bin")
+decode_data_path = os.path.join(root_dir, "/home/alta/summary/pm574/data/cnn_dm/finished_files/test.bin")
+vocab_path = os.path.join(root_dir, "/home/alta/summary/pm574/data/cnn_dm/finished_files/vocab")
+log_root = os.path.join(root_dir, "/home/alta/summary/pm574/pointer_summarizer/LOGs/")
+
+train_dir = "lib/training/A1"
+print_interval = 10
 
 # Hyperparameters
 hidden_dim= 256
@@ -33,5 +36,4 @@ eps = 1e-12
 max_iterations = 500000
 
 use_gpu=True
-
 lr_coverage=0.15
