@@ -1,6 +1,7 @@
 from __future__ import unicode_literals, print_function, division
 
 import os
+import sys
 import time
 import argparse
 from datetime import datetime
@@ -30,16 +31,15 @@ class Train(object):
         # time.sleep(15)
         self.print_interval = config.print_interval
 
-        # train_dir = os.path.join(config.log_root, 'train_%d' % (int(time.time())))
         train_dir = config.train_dir
         if not os.path.exists(train_dir):
             os.mkdir(train_dir)
 
-        self.model_dir = os.path.join(train_dir, 'model')
+        self.model_dir = train_dir
         if not os.path.exists(self.model_dir):
             os.mkdir(self.model_dir)
 
-        self.summary_writer = tf.compat.v1.summary.FileWriter(train_dir)
+        # self.summary_writer = tf.compat.v1.summary.FileWriter(train_dir)
 
     def save_model(self, running_avg_loss, iter):
         state = {
@@ -50,7 +50,7 @@ class Train(object):
             'optimizer': self.optimizer.state_dict(),
             'current_loss': running_avg_loss
         }
-        model_save_path = os.path.join(self.model_dir, 'model_%d_%d' % (iter, int(time.time())))
+        model_save_path = os.path.join(self.model_dir, 'iter{}.pt'.format(iter))
         torch.save(state, model_save_path)
 
     def setup_train(self, model_file_path=None):
@@ -85,7 +85,6 @@ class Train(object):
             get_output_from_batch(batch, use_cuda)
 
         self.optimizer.zero_grad()
-
         encoder_outputs, encoder_feature, encoder_hidden = self.model.encoder(enc_batch, enc_lens)
         s_t_1 = self.model.reduce_state(encoder_hidden)
 
@@ -129,14 +128,18 @@ class Train(object):
             batch = self.batcher.next_batch()
             loss = self.train_one_batch(batch)
 
-            running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, self.summary_writer, iter)
+            # running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, self.summary_writer, iter)
+            running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, iter)
+
             iter += 1
 
+            # if iter % 100 == 0:
+            #     self.summary_writer.flush()
 
-            if iter % 100 == 0:
-                self.summary_writer.flush()
             if iter % self.print_interval == 0:
                 print("[{}] iter {}, loss: {:.5f}".format(str(datetime.now()), iter, loss))
+                sys.stdout.flush()
+
             if iter % 5000 == 0:
                 self.save_model(running_avg_loss, iter)
 
@@ -147,7 +150,7 @@ if __name__ == '__main__':
                         required=False,
                         default=None,
                         help="Model file for retraining (default: None).")
-    args = parser.parse_args()
 
+    args = parser.parse_args()
     train_processor = Train()
     train_processor.trainIters(config.max_iterations, args.model_file_path)

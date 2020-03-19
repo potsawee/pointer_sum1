@@ -60,6 +60,13 @@ def calc_running_avg_loss(loss, running_avg_loss, summary_writer, step, decay=0.
   summary_writer.add_summary(loss_sum, step)
   return running_avg_loss
 
+def calc_running_avg_loss(loss, running_avg_loss, step, decay=0.99):
+  if running_avg_loss == 0:  # on the first iteration just take the loss
+    running_avg_loss = loss
+  else:
+    running_avg_loss = running_avg_loss * decay + (1 - decay) * loss
+  running_avg_loss = min(running_avg_loss, 12)  # clip
+  return running_avg_loss
 
 def write_for_rouge(reference_sents, decoded_words, ex_index,
                     _rouge_ref_dir, _rouge_dec_dir):
@@ -78,8 +85,8 @@ def write_for_rouge(reference_sents, decoded_words, ex_index,
   decoded_sents = [make_html_safe(w) for w in decoded_sents]
   reference_sents = [make_html_safe(w) for w in reference_sents]
 
-  ref_file = os.path.join(_rouge_ref_dir, "%06d_reference.txt" % ex_index)
-  decoded_file = os.path.join(_rouge_dec_dir, "%06d_decoded.txt" % ex_index)
+  ref_file = os.path.join(_rouge_ref_dir, "{}_reference.txt".format(ex_index))
+  decoded_file = os.path.join(_rouge_dec_dir, "{}_decoded.txt".format(ex_index))
 
   with open(ref_file, "w") as f:
     for idx, sent in enumerate(reference_sents):

@@ -3,6 +3,7 @@ from __future__ import unicode_literals, print_function, division
 import os
 import time
 import sys
+from datetime import datetime
 
 import tensorflow as tf
 import torch
@@ -22,14 +23,13 @@ class Evaluate(object):
         self.vocab = Vocab(config.vocab_path, config.vocab_size)
         self.batcher = Batcher(config.eval_data_path, self.vocab, mode='eval',
                                batch_size=config.batch_size, single_pass=True)
-        time.sleep(15)
+        # time.sleep(15)
         model_name = os.path.basename(model_file_path)
-
-        eval_dir = os.path.join(config.log_root, 'eval_%s' % (model_name))
-        if not os.path.exists(eval_dir):
-            os.mkdir(eval_dir)
-        self.summary_writer = tf.summary.FileWriter(eval_dir)
-
+        # eval_dir = os.path.join(config.log_root, 'eval_%s' % (model_name))
+        # if not os.path.exists(eval_dir):
+        #     os.mkdir(eval_dir)
+        # self.summary_writer = tf.summary.FileWriter(eval_dir)
+        self.model_file_path = model_file_path
         self.model = Model(model_file_path, is_eval=True)
 
     def eval_one_batch(self, batch):
@@ -48,7 +48,7 @@ class Evaluate(object):
                                                         encoder_outputs, encoder_feature, enc_padding_mask, c_t_1,
                                                         extra_zeros, enc_batch_extend_vocab, coverage, di)
             target = target_batch[:, di]
-            gold_probs = torch.gather(final_dist, 1, target.unsqueeze(1)).squeeze()
+            gold_probs = torch.gather(final_dist, dim=1, index=target.unsqueeze(1)).squeeze()
             step_loss = -torch.log(gold_probs + config.eps)
             if config.is_coverage:
                 step_coverage_loss = torch.sum(torch.min(attn_dist, coverage), 1)
@@ -63,31 +63,32 @@ class Evaluate(object):
         batch_avg_loss = sum_step_losses / dec_lens_var
         loss = torch.mean(batch_avg_loss)
 
-        return loss.data[0]
+        return loss.data.item()
 
     def run_eval(self):
         running_avg_loss, iter = 0, 0
-        start = time.time()
-        batch = self.batcher.next_batch()
-        while batch is not None:
-            loss = self.eval_one_batch(batch)
-
-            running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, self.summary_writer, iter)
-            iter += 1
-
-            if iter % 100 == 0:
-                self.summary_writer.flush()
-            print_interval = 1000
-            if iter % print_interval == 0:
-                print('steps %d, seconds for %d batch: %.2f , loss: %f' % (
-                iter, print_interval, time.time() - start, running_avg_loss))
-                start = time.time()
+        batch_losses = []
+        # while batch is not None:
+        for _ in range(835):
             batch = self.batcher.next_batch()
 
+            loss = self.eval_one_batch(batch)
+            batch_losses.append(loss)
+            # running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, self.summary_writer, iter)
+            running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, iter)
+            iter += 1
+
+            # if iter % 100 == 0:
+            #     self.summary_writer.flush()
+
+            print_interval = 10
+            if iter % print_interval == 0:
+                print("[{}] iter {}, loss: {:.5f}".format(str(datetime.now()), iter, loss))
+
+        avg_loss = sum(batch_losses) / len(batch_losses)
+        print("Finished Eval for Model {}: Avg Loss = {:.5f}".format(self.model_file_path, avg_loss))
 
 if __name__ == '__main__':
     model_filename = sys.argv[1]
     eval_processor = Evaluate(model_filename)
     eval_processor.run_eval()
-
-

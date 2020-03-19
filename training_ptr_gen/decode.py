@@ -3,12 +3,14 @@
 from __future__ import unicode_literals, print_function, division
 
 import sys
-
-reload(sys)
-sys.setdefaultencoding('utf8')
-
+# reload(sys)
+# sys.setdefaultencoding('utf8')
 import os
 import time
+import pickle
+import random
+from pathlib import Path
+from datetime import datetime
 
 import torch
 from torch.autograd import Variable
@@ -22,6 +24,7 @@ from train_util import get_input_from_batch
 
 
 use_cuda = config.use_gpu and torch.cuda.is_available()
+MAX_TEST_ID = 11490
 
 class Beam(object):
   def __init__(self, tokens, log_probs, state, context, coverage):
@@ -50,29 +53,59 @@ class Beam(object):
 class BeamSearch(object):
     def __init__(self, model_file_path):
         model_name = os.path.basename(model_file_path)
-        self._decode_dir = os.path.join(config.log_root, 'decode_%s' % (model_name))
+        self._decode_dir = os.path.join(config.decode_dir, model_name)
+        self._decode_dir = os.path.splitext(self._decode_dir)[0]
         self._rouge_ref_dir = os.path.join(self._decode_dir, 'rouge_ref')
         self._rouge_dec_dir = os.path.join(self._decode_dir, 'rouge_dec_dir')
+
         for p in [self._decode_dir, self._rouge_ref_dir, self._rouge_dec_dir]:
-            if not os.path.exists(p):
-                os.mkdir(p)
+            Path(p).mkdir(parents=True, exist_ok=True)
 
         self.vocab = Vocab(config.vocab_path, config.vocab_size)
-        self.batcher = Batcher(config.decode_data_path, self.vocab, mode='decode',
-                               batch_size=config.beam_size, single_pass=True)
-        time.sleep(15)
+        # self.batcher = Batcher(config.decode_data_path, self.vocab, mode='decode',
+        #                        batch_size=config.beam_size, single_pass=True)
+        # time.sleep(15)
+        self.get_batches(config.decode_pk_path)
 
         self.model = Model(model_file_path, is_eval=True)
 
     def sort_beams(self, beams):
         return sorted(beams, key=lambda h: h.avg_log_prob, reverse=True)
 
+    def get_batches(self, path):
+        """
+        load batches dumped by pickle
+        see batch_saver.py for more information
+        """
+        with open(path, 'rb') as f: batches = pickle.load(f, encoding="bytes")
+        self.batches = batches
 
-    def decode(self):
-        start = time.time()
-        counter = 0
-        batch = self.batcher.next_batch()
-        while batch is not None:
+        print("loaded: {}".format(path))
+
+    def if_already_exists(self, idx):
+        ref_file = os.path.join(self._rouge_ref_dir, "{}_reference.txt".format(idx))
+        decoded_file = os.path.join(self._rouge_dec_dir, "{}_decoded.txt".format(idx))
+        return os.path.isfile(ref_file) and os.path.isfile(decoded_file)
+
+    def decode(self, file_id_start, file_id_stop):
+        if file_id_stop > MAX_TEST_ID: file_id_stop=MAX_TEST_ID
+
+        # while batch is not None:
+
+        # do this for faster stack CPU machines - to replace those that fail!!
+        idx_list = [i for i in range(file_id_start, file_id_stop)]
+        random.shuffle(idx_list)
+
+        for idx in idx_list:
+
+            # check if this is written already
+            if self.if_already_exists(idx):
+                # print("ID {} already exists".format(idx))
+                continue
+
+            # batch = self.batcher.next_batch()
+            batch = self.batches[idx]
+
             # Run beam search to get best Hypothesis
             best_summary = self.beam_search(batch)
 
@@ -90,23 +123,19 @@ class BeamSearch(object):
 
             original_abstract_sents = batch.original_abstracts_sents[0]
 
-            write_for_rouge(original_abstract_sents, decoded_words, counter,
+            write_for_rouge(original_abstract_sents, decoded_words, idx,
                             self._rouge_ref_dir, self._rouge_dec_dir)
-            counter += 1
-            if counter % 1000 == 0:
-                print('%d example in %d sec'%(counter, time.time() - start))
-                start = time.time()
 
-            batch = self.batcher.next_batch()
+            print("decoded idx = {}".format(idx))
+        print("Finished decoding idx [{},{})".format(file_id_start, file_id_stop))
 
-        print("Decoder has finished reading dataset for single_pass.")
-        print("Now starting ROUGE eval...")
-        results_dict = rouge_eval(self._rouge_ref_dir, self._rouge_dec_dir)
-        rouge_log(results_dict, self._decode_dir)
+        # print("Starting ROUGE eval...")
+        # results_dict = rouge_eval(self._rouge_ref_dir, self._rouge_dec_dir)
+        # rouge_log(results_dict, self._decode_dir)
 
 
     def beam_search(self, batch):
-        #batch should have only one example
+        # batch should have only one example
         enc_batch, enc_padding_mask, enc_lens, enc_batch_extend_vocab, extra_zeros, c_t_0, coverage_t_0 = \
             get_input_from_batch(batch, use_cuda)
 
@@ -117,13 +146,14 @@ class BeamSearch(object):
         dec_h = dec_h.squeeze()
         dec_c = dec_c.squeeze()
 
-        #decoder batch preparation, it has beam_size example initially everything is repeated
+        # decoder batch preparation, it has beam_size example initially everything is repeated
         beams = [Beam(tokens=[self.vocab.word2id(data.START_DECODING)],
                       log_probs=[0.0],
                       state=(dec_h[0], dec_c[0]),
                       context = c_t_0[0],
                       coverage=(coverage_t_0[0] if config.is_coverage else None))
-                 for _ in xrange(config.beam_size)]
+                 for _ in range(config.beam_size)]
+
         results = []
         steps = 0
         while steps < config.max_dec_steps and len(results) < config.beam_size:
@@ -131,8 +161,7 @@ class BeamSearch(object):
             latest_tokens = [t if t < self.vocab.size() else self.vocab.word2id(data.UNKNOWN_TOKEN) \
                              for t in latest_tokens]
             y_t_1 = Variable(torch.LongTensor(latest_tokens))
-            if use_cuda:
-                y_t_1 = y_t_1.cuda()
+            if use_cuda: y_t_1 = y_t_1.cuda()
             all_state_h =[]
             all_state_c = []
 
@@ -167,13 +196,13 @@ class BeamSearch(object):
 
             all_beams = []
             num_orig_beams = 1 if steps == 0 else len(beams)
-            for i in xrange(num_orig_beams):
+            for i in range(num_orig_beams):
                 h = beams[i]
                 state_i = (dec_h[i], dec_c[i])
                 context_i = c_t[i]
                 coverage_i = (coverage_t[i] if config.is_coverage else None)
 
-                for j in xrange(config.beam_size * 2):  # for each of the top 2*beam_size hyps:
+                for j in range(config.beam_size * 2):  # for each of the top 2*beam_size hyps:
                     new_beam = h.extend(token=topk_ids[i, j].item(),
                                    log_prob=topk_log_probs[i, j].item(),
                                    state=state_i,
@@ -202,7 +231,11 @@ class BeamSearch(object):
 
 if __name__ == '__main__':
     model_filename = sys.argv[1]
+    file_id_start = int(sys.argv[2])
+    if len(sys.argv) == 4:
+        file_id_stop = int(sys.argv[3])
+    else:
+        file_id_stop = file_id_start+100
+
     beam_Search_processor = BeamSearch(model_filename)
-    beam_Search_processor.decode()
-
-
+    beam_Search_processor.decode(file_id_start, file_id_stop)

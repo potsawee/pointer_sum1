@@ -1,3 +1,4 @@
 export PYTHONPATH=`pwd`
-python training_ptr_gen/train.py >& ../log/training_log &
-
+export CUDA_VISIBLE_DEVICES=3
+# python training_ptr_gen/train.py > LOGs/log.txt &
+python training_ptr_gen/train.py
