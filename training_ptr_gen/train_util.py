@@ -3,6 +3,16 @@ import numpy as np
 import torch
 from data_util import config
 
+def get_sent_position(enc_batch, stop_id):
+    batch_size, max_len = enc_batch.size()
+    pos_batch = []
+    for bi in range(batch_size):
+        pos = []
+        for t in range(max_len):
+            if enc_batch[bi,t] == stop_id: pos.append(t)
+        pos_batch.append(pos)
+    return pos_batch
+
 def get_input_from_batch(batch, use_cuda):
   batch_size = len(batch.enc_lens)
 
@@ -56,4 +66,3 @@ def get_output_from_batch(batch, use_cuda):
 
 
   return dec_batch, dec_padding_mask, max_dec_len, dec_lens_var, target_batch
-
