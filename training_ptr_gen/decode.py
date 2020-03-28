@@ -5,6 +5,7 @@ from __future__ import unicode_literals, print_function, division
 import sys
 # reload(sys)
 # sys.setdefaultencoding('utf8')
+
 import os
 import time
 import pickle
@@ -20,7 +21,7 @@ from data_util.data import Vocab
 from data_util import data, config
 from model import Model
 from data_util.utils import write_for_rouge, rouge_eval, rouge_log
-from train_util import get_input_from_batch
+from train_util import get_input_from_batch, get_sent_position
 
 
 use_cuda = config.use_gpu and torch.cuda.is_available()
@@ -139,8 +140,18 @@ class BeamSearch(object):
         enc_batch, enc_padding_mask, enc_lens, enc_batch_extend_vocab, extra_zeros, c_t_0, coverage_t_0 = \
             get_input_from_batch(batch, use_cuda)
 
-        encoder_outputs, encoder_feature, encoder_hidden = self.model.encoder(enc_batch, enc_lens)
-        s_t_0 = self.model.reduce_state(encoder_hidden)
+        if not config.is_hierarchical:
+
+            encoder_outputs, encoder_feature, encoder_hidden = self.model.encoder(enc_batch, enc_lens)
+            s_t_0 = self.model.reduce_state(encoder_hidden)
+
+        else:
+            stop_id = self.vocab.word2id('.')
+            enc_sent_pos = get_sent_position(enc_batch, stop_id)
+
+            encoder_outputs, encoder_feature, encoder_hidden, sent_enc_outputs, sent_enc_feature, sent_enc_hidden, sent_enc_padding_mask = \
+                                                                    self.model.encoder(enc_batch, enc_lens, enc_sent_pos)
+            s_t_0, _ = self.model.reduce_state(encoder_hidden, sent_enc_hidden)
 
         dec_h, dec_c = s_t_0 # 1 x 2*hidden_size
         dec_h = dec_h.squeeze()
@@ -184,9 +195,17 @@ class BeamSearch(object):
                     all_coverage.append(h.coverage)
                 coverage_t_1 = torch.stack(all_coverage, 0)
 
-            final_dist, s_t, c_t, attn_dist, p_gen, coverage_t = self.model.decoder(y_t_1, s_t_1,
-                                                        encoder_outputs, encoder_feature, enc_padding_mask, c_t_1,
-                                                        extra_zeros, enc_batch_extend_vocab, coverage_t_1, steps)
+            if not config.is_hierarchical:
+                final_dist, s_t, c_t, attn_dist, p_gen, coverage_t = self.model.decoder(y_t_1, s_t_1,
+                                                            encoder_outputs, encoder_feature, enc_padding_mask, c_t_1,
+                                                            extra_zeros, enc_batch_extend_vocab, coverage_t_1, steps)
+
+            else:
+                final_dist, s_t,  c_t, attn_dist, p_gen, coverage_t = self.model.decoder(y_t_1, s_t_1, enc_sent_pos,
+                                                            encoder_outputs, encoder_feature, enc_padding_mask,
+                                                            None, sent_enc_outputs, sent_enc_feature, sent_enc_padding_mask,
+                                                            c_t_1, extra_zeros, enc_batch_extend_vocab, coverage_t_1, steps)
+
             log_probs = torch.log(final_dist)
             topk_log_probs, topk_ids = torch.topk(log_probs, config.beam_size * 2)
 

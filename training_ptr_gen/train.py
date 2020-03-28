@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import argparse
+import pickle
 from datetime import datetime
 
 import tensorflow as tf
@@ -25,8 +26,8 @@ class Train(object):
     def __init__(self):
         self.vocab = Vocab(config.vocab_path, config.vocab_size)
 
-        self.batcher = Batcher(config.train_data_path, self.vocab, mode='train',
-                               batch_size=config.batch_size, single_pass=False)
+        # self.batcher = Batcher(config.train_data_path, self.vocab, mode='train',
+        #                        batch_size=config.batch_size, single_pass=False)
         # print("MODE MUST BE train")
         # time.sleep(15)
         self.print_interval = config.print_interval
@@ -143,7 +144,7 @@ class Train(object):
         # print('{} HIER Time: {}'.format(config.is_hierarchical ,datetime.now() - start))
         # import pdb; pdb.set_trace()
 
-        self.norm = clip_grad_norm_(self.model.encoder.parameters(), config.max_grad_norm)
+        clip_grad_norm_(self.model.encoder.parameters(), config.max_grad_norm)
         clip_grad_norm_(self.model.decoder.parameters(), config.max_grad_norm)
         clip_grad_norm_(self.model.reduce_state.parameters(), config.max_grad_norm)
 
@@ -154,8 +155,18 @@ class Train(object):
     def trainIters(self, n_iters, model_file_path=None):
         iter, running_avg_loss = self.setup_train(model_file_path)
         sys.stdout.flush()
+
+        data_path = "lib/data/batches_train.vocab50000.batch16.pk.bin"
+        with open(data_path, 'rb') as f:
+            stored_batches = pickle.load(f, encoding="bytes")
+        print("loaded data: {}".format(data_path))
+        num_batches = len(stored_batches)
+
         while iter < n_iters:
-            batch = self.batcher.next_batch()
+            # batch = self.batcher.next_batch()
+            batch_id = iter%num_batches
+            batch = stored_batches[batch_id]
+
             loss = self.train_one_batch(batch)
 
             # running_avg_loss = calc_running_avg_loss(loss, running_avg_loss, self.summary_writer, iter)

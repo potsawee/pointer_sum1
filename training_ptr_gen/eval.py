@@ -13,7 +13,7 @@ from data_util.batcher import Batcher
 from data_util.data import Vocab
 
 from data_util.utils import calc_running_avg_loss
-from train_util import get_input_from_batch, get_output_from_batch
+from train_util import get_input_from_batch, get_output_from_batch, get_sent_position
 from model import Model
 
 use_cuda = config.use_gpu and torch.cuda.is_available()
@@ -38,15 +38,35 @@ class Evaluate(object):
         dec_batch, dec_padding_mask, max_dec_len, dec_lens_var, target_batch = \
             get_output_from_batch(batch, use_cuda)
 
-        encoder_outputs, encoder_feature, encoder_hidden = self.model.encoder(enc_batch, enc_lens)
-        s_t_1 = self.model.reduce_state(encoder_hidden)
+        if not config.is_hierarchical:
+            encoder_outputs, encoder_feature, encoder_hidden = self.model.encoder(enc_batch, enc_lens)
+            s_t_1 = self.model.reduce_state.forward1(encoder_hidden)
+
+        else:
+            stop_id = self.vocab.word2id('.')
+            enc_sent_pos = get_sent_position(enc_batch, stop_id)
+            dec_sent_pos = get_sent_position(dec_batch, stop_id)
+
+            encoder_outputs, encoder_feature, encoder_hidden, sent_enc_outputs, sent_enc_feature, sent_enc_hidden, sent_enc_padding_mask = \
+                                                                    self.model.encoder(enc_batch, enc_lens, enc_sent_pos)
+            s_t_1, sent_s_t_1 = self.model.reduce_state(encoder_hidden, sent_enc_hidden)
+
 
         step_losses = []
         for di in range(min(max_dec_len, config.max_dec_steps)):
             y_t_1 = dec_batch[:, di]  # Teacher forcing
-            final_dist, s_t_1, c_t_1,attn_dist, p_gen, next_coverage = self.model.decoder(y_t_1, s_t_1,
-                                                        encoder_outputs, encoder_feature, enc_padding_mask, c_t_1,
-                                                        extra_zeros, enc_batch_extend_vocab, coverage, di)
+            if not config.is_hierarchical:
+                final_dist, s_t_1, c_t_1,attn_dist, p_gen, next_coverage = self.model.decoder.forward1(y_t_1, s_t_1,
+                                                            encoder_outputs, encoder_feature, enc_padding_mask, c_t_1,
+                                                            extra_zeros, enc_batch_extend_vocab, coverage, di)
+
+            else:
+
+                final_dist, s_t_1,  c_t_1, attn_dist, p_gen, next_coverage = self.model.decoder(y_t_1, s_t_1, enc_sent_pos,
+                                                            encoder_outputs, encoder_feature, enc_padding_mask,
+                                                            sent_s_t_1, sent_enc_outputs, sent_enc_feature, sent_enc_padding_mask,
+                                                            c_t_1, extra_zeros, enc_batch_extend_vocab, coverage, di)
+
             target = target_batch[:, di]
             gold_probs = torch.gather(final_dist, dim=1, index=target.unsqueeze(1)).squeeze()
             step_loss = -torch.log(gold_probs + config.eps)

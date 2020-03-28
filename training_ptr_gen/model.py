@@ -230,11 +230,10 @@ class Attention(nn.Module):
         normalization_factor = attn_dist_.sum(1, keepdim=True)
         attn_dist = attn_dist_ / normalization_factor
 
-        attn_dist = attn_dist.unsqueeze(1)  # B x 1 x t_k
-        c_t = torch.bmm(attn_dist, encoder_outputs)  # B x 1 x n
-        c_t = c_t.view(-1, config.hidden_dim * 2)  # B x 2*hidden_dim
-
-        attn_dist = attn_dist.view(-1, t_k)  # B x t_k
+        # attn_dist = attn_dist.unsqueeze(1)  # B x 1 x t_k
+        # c_t = torch.bmm(attn_dist, encoder_outputs)  # B x 1 x n
+        # c_t = c_t.view(-1, config.hidden_dim * 2)  # B x 2*hidden_dim
+        # attn_dist = attn_dist.view(-1, t_k)  # B x t_k
 
         # if config.is_hierarchical:
         b, sent_t_k, sent_n = list(sent_enc_outputs.size())
@@ -253,8 +252,8 @@ class Attention(nn.Module):
         sent_attn_dist = sent_attn_dist_ / sent_norm_factor
 
         sent_attn_dist = sent_attn_dist.unsqueeze(1)
-        sent_c_t = torch.bmm(sent_attn_dist, sent_enc_outputs)
-        sent_c_t = sent_c_t.view(-1, config.hidden_dim * 2)
+        # sent_c_t = torch.bmm(sent_attn_dist, sent_enc_outputs)
+        # sent_c_t = sent_c_t.view(-1, config.hidden_dim * 2)
 
         sent_attn_dist = sent_attn_dist.view(-1, sent_t_k)
 
@@ -268,15 +267,25 @@ class Attention(nn.Module):
             for ix in range(len(end_ids)):
                 i1 = start_ids[ix]
                 i2 = end_ids[ix]
-                norm_factor = attn_dist[bi, i1:i2].sum()
-                attn_dist_sw[bi, i1:i2] = (attn_dist[bi, i1:i2]/norm_factor) * sent_attn_dist[bi,ix].unsqueeze(-1)
+                # print("norm_factor: ", norm_factor.item())
+                # if norm_factor.item() == 0: import pdb; pdb.set_trace()
+                # attn_dist_sw[bi, i1:i2] = (attn_dist[bi, i1:i2]/norm_factor) * sent_attn_dist[bi,ix].unsqueeze(-1)
+                # DivideByZero Problem!!!
+                word_attn_dist = attn_dist[bi, i1:i2] + config.eps # otherwise DivisionByZero
+                norm_factor = word_attn_dist.sum()
+                attn_dist_sw[bi, i1:i2] = (word_attn_dist/norm_factor) * sent_attn_dist[bi,ix].unsqueeze(-1)
+
+        attn_dist_sw = attn_dist_sw.unsqueeze(1)  # B x 1 x t_k
+        c_t = torch.bmm(attn_dist_sw, encoder_outputs)  # B x 1 x n
+        c_t = c_t.view(-1, config.hidden_dim * 2)  # B x 2*hidden_dim
+        attn_dist_sw = attn_dist_sw.view(-1, t_k)  # B x t_k
 
         if config.is_coverage:
             coverage = coverage.view(-1, t_k)
             # coverage = coverage + attn_dist
             coverage = coverage + attn_dist_sw
 
-        return c_t, attn_dist, coverage, sent_c_t, sent_attn_dist
+        return c_t, attn_dist_sw, coverage, sent_attn_dist
 
 
 class Decoder(nn.Module):
@@ -387,7 +396,7 @@ class Decoder(nn.Module):
             #                      sent_c_dec.view(-1, config.hidden_dim)), 1)
             # Currently, there is only one LSTM in the decoder, so sent_s_t_1 is not used!
 
-            c_t, _, coverage_next, sent_c_t, _ = self.attention_network(s_t_hat, enc_sent_pos, encoder_outputs, encoder_feature, enc_padding_mask,
+            c_t, _, coverage_next, _ = self.attention_network(s_t_hat, enc_sent_pos, encoder_outputs, encoder_feature, enc_padding_mask,
                                                     s_t_hat, sent_enc_outputs, sent_enc_feature, sent_enc_padding_mask, coverage)
 
             coverage = coverage_next
@@ -400,7 +409,7 @@ class Decoder(nn.Module):
         s_t_hat = torch.cat((h_decoder.view(-1, config.hidden_dim),
                              c_decoder.view(-1, config.hidden_dim)), 1)  # B x 2*hidden_dim
 
-        c_t, attn_dist, coverage_next, sent_c_t, sent_attn_dist = self.attention_network(
+        c_t, attn_dist, coverage_next, sent_attn_dist = self.attention_network(
                                                         s_t_hat, enc_sent_pos, encoder_outputs, encoder_feature, enc_padding_mask,
                                                         s_t_hat, sent_enc_outputs, sent_enc_feature, sent_enc_padding_mask, coverage)
 
