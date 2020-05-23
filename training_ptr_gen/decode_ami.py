@@ -75,17 +75,23 @@ class BeamSearch(object):
         return sorted(beams, key=lambda h: h.avg_log_prob, reverse=True)
 
     def if_already_exists(self, idx):
-        ref_file = os.path.join(self._rouge_ref_dir, "{}_reference.txt".format(idx))
-        decoded_file = os.path.join(self._rouge_dec_dir, "{}_decoded.txt".format(idx))
-        return os.path.isfile(ref_file) and os.path.isfile(decoded_file)
+        decoded_file = os.path.join(self._rouge_dec_dir, "file.{}.txt".format(idx))
+        return os.path.isfile(decoded_file)
 
-    def decode(self, file_id_start, file_id_stop):
-        test_data = load_ami_data('test')
+    def decode(self, file_id_start, file_id_stop, ami_id='191209'):
+        print("AMI transcription:", ami_id)
 
-        for idx in range(file_id_start, file_id_stop):
+        test_data = load_ami_data(ami_id, 'test')
+
+        # do this for faster stack CPU machines - to replace those that fail!!
+        idx_list = [i for i in range(file_id_start, file_id_stop)]
+        random.shuffle(idx_list)
+        for idx in idx_list:
+
+        # for idx in range(file_id_start, file_id_stop):
             # check if this is written already
             if self.if_already_exists(idx):
-                # print("ID {} already exists".format(idx))
+                print("ID {} already exists".format(idx))
                 continue
 
             # Run beam search to get best Hypothesis
@@ -228,4 +234,10 @@ if __name__ == '__main__':
         file_id_stop = file_id_start+100
 
     beam_Search_processor = BeamSearch(model_filename)
-    beam_Search_processor.decode(file_id_start, file_id_stop)
+    beam_Search_processor.decode(file_id_start, file_id_stop, ami_id='asr-200124')
+    """
+    ami_id:
+        191209     = manual transcription
+        asr-200214 = Linlin's ASR output (CUED internal, WER = 20%)
+        asr-200124 = AMI ASR Official Release
+    """

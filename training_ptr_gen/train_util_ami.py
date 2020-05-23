@@ -30,8 +30,14 @@ class Utterance(object):
         self.speakerid     = speakerid
         self.extsum_label  = extsum_label
 
-def load_ami_data(data_type):
-    path = "/home/alta/summary/pm574/summariser1/lib/model_data/ami-191209.{}.pk.bin".format(data_type)
+def load_ami_data(ami_id, data_type):
+    """
+    ami_id:
+        191209     = manual transcription
+        asr-200214 = Linlin's ASR output (CUED internal, WER = 20%)
+        asr-200124 = AMI ASR Official Release
+    """
+    path = "/home/alta/summary/pm574/summariser1/lib/model_data/ami-{}.{}.pk.bin".format(ami_id, data_type)
     with open(path, 'rb') as f:
         ami_data = pickle.load(f, encoding="bytes")
     return ami_data

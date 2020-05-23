@@ -3,13 +3,17 @@ import numpy as np
 import torch
 from data_util import config
 
-def get_sent_position(enc_batch, stop_id):
+def get_sent_position(enc_batch, stop_id, pad_id):
     batch_size, max_len = enc_batch.size()
     pos_batch = []
     for bi in range(batch_size):
         pos = []
         for t in range(max_len):
             if enc_batch[bi,t] == stop_id: pos.append(t)
+
+        if enc_batch[bi,-1] != stop_id and enc_batch[bi,-1] != pad_id:
+            pos.append(max_len-1)
+
         pos_batch.append(pos)
     return pos_batch
 

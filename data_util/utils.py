@@ -86,7 +86,8 @@ def write_for_rouge(reference_sents, decoded_words, ex_index,
   reference_sents = [make_html_safe(w) for w in reference_sents]
 
   ref_file = os.path.join(_rouge_ref_dir, "{}_reference.txt".format(ex_index))
-  decoded_file = os.path.join(_rouge_dec_dir, "{}_decoded.txt".format(ex_index))
+  # decoded_file = os.path.join(_rouge_dec_dir, "{}_decoded.txt".format(ex_index))
+  decoded_file = os.path.join(_rouge_dec_dir, "file.{}.txt".format(ex_index))
 
   with open(ref_file, "w") as f:
     for idx, sent in enumerate(reference_sents):
