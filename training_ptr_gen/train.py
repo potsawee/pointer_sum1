@@ -26,8 +26,8 @@ class Train(object):
     def __init__(self):
         self.vocab = Vocab(config.vocab_path, config.vocab_size)
 
-        # self.batcher = Batcher(config.train_data_path, self.vocab, mode='train',
-        #                        batch_size=config.batch_size, single_pass=False)
+        self.batcher = Batcher(config.train_data_path, self.vocab, mode='train',
+                               batch_size=config.batch_size, single_pass=False)
         # print("MODE MUST BE train")
         # time.sleep(15)
         self.print_interval = config.print_interval
@@ -93,13 +93,14 @@ class Train(object):
 
         else:
             stop_id = self.vocab.word2id('.')
-            enc_sent_pos = get_sent_position(enc_batch, stop_id)
-            dec_sent_pos = get_sent_position(dec_batch, stop_id)
+            pad_id  = self.vocab.word2id('[PAD]')
+            enc_sent_pos = get_sent_position(enc_batch, stop_id, pad_id)
+            dec_sent_pos = get_sent_position(dec_batch, stop_id, pad_id)
 
-            encoder_outputs, encoder_feature, encoder_hidden, sent_enc_outputs, sent_enc_feature, sent_enc_hidden, sent_enc_padding_mask = \
+            encoder_outputs, encoder_feature, encoder_hidden, sent_enc_outputs, sent_enc_feature, sent_enc_hidden, sent_enc_padding_mask, sent_lens, seq_lens2 = \
                                                                     self.model.encoder(enc_batch, enc_lens, enc_sent_pos)
-            s_t_1, sent_s_t_1 = self.model.reduce_state(encoder_hidden, sent_enc_hidden)
 
+            s_t_1, sent_s_t_1 = self.model.reduce_state(encoder_hidden, sent_enc_hidden)
         step_losses = []
         for di in range(min(max_dec_len, config.max_dec_steps)):
             y_t_1 = dec_batch[:, di]  # Teacher forcing
@@ -114,10 +115,11 @@ class Train(object):
                 # import pdb; pdb.set_trace()
             else:
                 # start = datetime.now()
-
-                final_dist, s_t_1,  c_t_1, attn_dist, p_gen, next_coverage = self.model.decoder(y_t_1, s_t_1, enc_sent_pos,
-                                                            encoder_outputs, encoder_feature, enc_padding_mask,
+                max_doc_len = enc_batch.size(1)
+                final_dist, sent_s_t_1,  c_t_1, attn_dist, p_gen, next_coverage = self.model.decoder(y_t_1, sent_s_t_1,
+                                                            encoder_outputs, encoder_feature, enc_padding_mask, seq_lens2,
                                                             sent_s_t_1, sent_enc_outputs, sent_enc_feature, sent_enc_padding_mask,
+                                                            sent_lens, max_doc_len,
                                                             c_t_1, extra_zeros, enc_batch_extend_vocab, coverage, di)
                 # print('DO HIER Time: ',datetime.now() - start)
                 # import pdb; pdb.set_trace()
@@ -156,16 +158,16 @@ class Train(object):
         iter, running_avg_loss = self.setup_train(model_file_path)
         sys.stdout.flush()
 
-        data_path = "lib/data/batches_train.vocab50000.batch16.pk.bin"
-        with open(data_path, 'rb') as f:
-            stored_batches = pickle.load(f, encoding="bytes")
-        print("loaded data: {}".format(data_path))
-        num_batches = len(stored_batches)
+        # data_path = "lib/data/batches_train.vocab50000.batch16.pk.bin"
+        # with open(data_path, 'rb') as f:
+        #     stored_batches = pickle.load(f, encoding="bytes")
+        # print("loaded data: {}".format(data_path))
+        # num_batches = len(stored_batches)
 
         while iter < n_iters:
-            # batch = self.batcher.next_batch()
-            batch_id = iter%num_batches
-            batch = stored_batches[batch_id]
+            batch = self.batcher.next_batch()
+            # batch_id = iter%num_batches
+            # batch = stored_batches[batch_id]
 
             loss = self.train_one_batch(batch)
 
