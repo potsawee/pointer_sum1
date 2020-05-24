@@ -10,10 +10,11 @@ vocab_path = os.path.join(root_dir, "/home/alta/summary/pm574/data/cnn_dm/finish
 
 decode_pk_path = "lib/data/batches_test.vocab50000.beam4.pk.bin"
 
-model_name = "PTR_A2"
+model_name = "PTR_COV2"
 train_dir  = "lib/trained_models/{}".format(model_name)
 decode_dir = "lib/decode/{}".format(model_name)
-print_interval = 100
+
+model_file_path = "lib/trained_models/PTR_A1/iter320000.pt"
 
 # Hyperparameters
 hidden_dim= 256
@@ -32,11 +33,13 @@ trunc_norm_init_std=1e-4
 max_grad_norm=2.0
 
 pointer_gen = True
-is_coverage = False
+is_coverage = True
 cov_loss_wt = 1.0
+lr_coverage = 0.15
 
 eps = 1e-12
-max_iterations = 600000
+max_iterations = 320000+100000 # 600k for PTR / 3k for fine-tuning with COV
+save_every     = 5000  # 5000 for PTR
+print_interval = 100
 
 use_gpu=True
-lr_coverage=0.15
