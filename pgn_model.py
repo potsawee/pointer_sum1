@@ -209,6 +209,8 @@ class PGNTokenizer(object):
                 max_art_oovs = len(example_input_list[i].article_oovs)
                 if max_art_oovs > 0:
                     extra_zeros = Variable(torch.zeros((beam_size, max_art_oovs)))
+                else:
+                    extra_zeros = None
 
                 art_oovs = example_input_list[i].article_oovs
 
@@ -224,8 +226,10 @@ class PGNTokenizer(object):
 
                 if tiled_enc_batch_extend_vocab_i is not None:
                     tiled_enc_batch_extend_vocab_i = tiled_enc_batch_extend_vocab_i.cuda()
+
                 if extra_zeros is not None:
                     extra_zeros = extra_zeros.cuda()
+
                 c_t_1 = c_t_1.cuda()
 
                 if coverage is not None:
@@ -371,12 +375,12 @@ class PGNwithCoverage(object):
 
         return beams_sorted[0]
 
-def test():
-    pgn = PGNwithCoverage("PTR_COV2")
-    tokenizer = PGNTokenizer()
-    batches = tokenizer.get_decoding_batches_from_docs(docs=[LONG_BORING_TENNIS_ARTICLE, LONG_BORING_TENNIS_ARTICLE],
-                                                        beam_size=4,use_cuda=True )
-
-    pgn_summaries = pgn.decode(batches=batches, vocab=tokenizer.vocab, use_cuda=True)
-
-test()
+# def test():
+#     pgn = PGNwithCoverage("PTR_COV2")
+#     tokenizer = PGNTokenizer()
+#     batches = tokenizer.get_decoding_batches_from_docs(docs=[LONG_BORING_TENNIS_ARTICLE, LONG_BORING_TENNIS_ARTICLE],
+#                                                         beam_size=4,use_cuda=True )
+#
+#     pgn_summaries = pgn.decode(batches=batches, vocab=tokenizer.vocab, use_cuda=True)
+#
+# test()
